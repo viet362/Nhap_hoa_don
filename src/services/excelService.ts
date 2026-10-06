@@ -411,7 +411,10 @@ export async function generateInvoiceExcel(
 
       const exactColsXml =
         '<cols>' +
-        '<col min="1" max="4" width="0" hidden="1" customWidth="1"/>' +
+        '<col min="1" max="1" width="0" hidden="1" customWidth="1"/>' +
+        '<col min="2" max="2" width="0" hidden="1" customWidth="1"/>' +
+        '<col min="3" max="3" width="0" hidden="1" customWidth="1"/>' +
+        '<col min="4" max="4" width="0" hidden="1" customWidth="1"/>' +
         '<col min="5" max="5" width="14" customWidth="1"/>' +
         '<col min="6" max="6" width="16" customWidth="1"/>' +
         '<col min="7" max="7" width="65.55" customWidth="1"/>' +
@@ -430,16 +433,29 @@ export async function generateInvoiceExcel(
       }
 
       // Đặt topLeftCell="E3" để mọi phần mềm Excel trên điện thoại & máy tính mở trực tiếp tại Cột E
-      sheetXml = sheetXml.replace(/<sheetView([^>]*?)\/?>/, (match, p1) => {
-        const cleanP1 = (p1 || '').replace(/topLeftCell="[^"]*"/g, '').trim();
-        return `<sheetView ${cleanP1} topLeftCell="E3"/>`;
-      });
+      // Khắc phục triệt để lỗi corrupt XML do regex thay thế sai thẻ <sheetViews>
+      if (sheetXml.includes('<sheetViews>')) {
+        sheetXml = sheetXml.replace(
+          /<sheetViews>.*?<\/sheetViews>/s,
+          '<sheetViews><sheetView tabSelected="1" topLeftCell="E3" workbookViewId="0"/></sheetViews>'
+        );
+      } else {
+        sheetXml = sheetXml.replace(
+          '<sheetData>',
+          '<sheetViews><sheetView tabSelected="1" topLeftCell="E3" workbookViewId="0"/></sheetViews><sheetData>'
+        );
+      }
 
-      // Bỏ hoàn toàn cảnh báo tam giác xanh lá cây (Number / Date stored as text)
-      if (!sheetXml.includes('<ignoredErrors>')) {
+      // Bỏ cảnh báo tam giác xanh lá cây (Number stored as text) một cách an toàn
+      if (sheetXml.includes('<ignoredErrors>')) {
+        sheetXml = sheetXml.replace(
+          /<ignoredErrors>.*?<\/ignoredErrors>/s,
+          '<ignoredErrors><ignoredError sqref="A1:M500" numberStoredAsText="1"/></ignoredErrors>'
+        );
+      } else {
         sheetXml = sheetXml.replace(
           '</worksheet>',
-          '<ignoredErrors><ignoredError sqref="A1:M200" numberStoredAsText="1" twoDigitTextYear="1"/></ignoredErrors></worksheet>'
+          '<ignoredErrors><ignoredError sqref="A1:M500" numberStoredAsText="1"/></ignoredErrors></worksheet>'
         );
       }
 
