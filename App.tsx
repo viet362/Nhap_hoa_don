@@ -15,6 +15,7 @@ import { ImagePickerSection } from './src/components/ImagePickerSection';
 import { InvoiceTable } from './src/components/InvoiceTable';
 import { ExportShareBar } from './src/components/ExportShareBar';
 import { ApiKeyModal } from './src/components/ApiKeyModal';
+import { ConfirmModal } from './src/components/ConfirmModal';
 import {
   getStoredApiKey,
   saveStoredApiKey,
@@ -49,6 +50,7 @@ export default function App() {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [apiKey, setApiKey] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
@@ -143,19 +145,14 @@ export default function App() {
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Xóa toàn bộ danh sách (Hỗ trợ cả Web confirm và Mobile Alert)
+  // Xóa toàn bộ danh sách (Mở Modal xác nhận trong ứng dụng, hoạt động 100% trên mọi nền tảng)
   const handleClearAll = () => {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ danh sách hóa đơn hiện tại?')) {
-        setItems([]);
-      }
-      return;
-    }
+    setIsConfirmClearOpen(true);
+  };
 
-    Alert.alert('Xác nhận', 'Bạn có chắc chắn muốn xóa toàn bộ danh sách hóa đơn hiện tại?', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Xóa tất cả', style: 'destructive', onPress: () => setItems([]) },
-    ]);
+  const handleConfirmClearAll = () => {
+    setItems([]);
+    setIsConfirmClearOpen(false);
   };
 
   // Xuất file Excel và KÍCH HOẠT NÚT CHIA SẺ SANG ZALO, TIN NHẮN...
@@ -166,15 +163,12 @@ export default function App() {
     }
 
     try {
-      setIsExporting(true);
       // 1. Tạo file Excel chuẩn 100% định dạng mẫu
       const { fileUri, fileName, rawBytes } = await generateInvoiceExcel(items, settings);
 
       // 2. Kích hoạt Native Share Sheet (Zalo, Tin nhắn, Mail, AirDrop)
-      setIsExporting(false);
       await shareExcelFile(fileUri, fileName, rawBytes);
     } catch (err: any) {
-      setIsExporting(false);
       Alert.alert('Lỗi xuất file', err?.message || 'Không thể tạo file Excel.');
     }
   };
@@ -236,6 +230,17 @@ export default function App() {
             setApiKey(key);
             saveStoredApiKey(key);
           }}
+        />
+
+        {/* Modal xác nhận xóa toàn bộ danh sách (100% in-app UI) */}
+        <ConfirmModal
+          visible={isConfirmClearOpen}
+          title="Xóa toàn bộ hóa đơn?"
+          message="Bạn có chắc chắn muốn xóa tất cả hóa đơn đang có trong bảng kê? Dữ liệu này sẽ không thể khôi phục."
+          confirmText="Xác nhận xóa"
+          cancelText="Hủy"
+          onConfirm={handleConfirmClearAll}
+          onCancel={() => setIsConfirmClearOpen(false)}
         />
       </SafeAreaView>
     </SafeAreaProvider>

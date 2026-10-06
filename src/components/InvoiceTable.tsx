@@ -97,8 +97,13 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
       <View style={styles.listHeaderRow}>
         <Text style={styles.listHeaderTitle}>CHI TIẾT CÁC DÒNG HÓA ĐƠN</Text>
         {items.length > 0 && (
-          <TouchableOpacity onPress={onClearAll}>
-            <Text style={styles.clearAllText}>Xóa tất cả</Text>
+          <TouchableOpacity
+            style={styles.clearAllBtn}
+            onPress={onClearAll}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.clearAllText}>🗑️ Xóa tất cả</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -275,10 +280,18 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     letterSpacing: 1,
   },
+  clearAllBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
   clearAllText: {
     fontSize: 12,
     color: '#EF4444',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   emptyContainer: {
     padding: 32,

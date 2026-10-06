@@ -22,18 +22,41 @@ export async function shareExcelFile(
     if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && (navigator as any).share) {
       try {
         let file: File | null = null;
-        const mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        const candidateMimeTypes = [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'application/octet-stream',
+        ];
 
-        if (rawBytes) {
-          file = new File([rawBytes as any], fileName, { type: mimeType });
-        } else if (fileUri.startsWith('blob:')) {
-          const res = await fetch(fileUri);
-          const blob = await res.blob();
-          file = new File([blob], fileName, { type: mimeType });
+        // Tìm MIME type được trình duyệt chấp nhận chia sẻ
+        for (const mime of candidateMimeTypes) {
+          try {
+            const testFile = rawBytes
+              ? new File([rawBytes as any], fileName, { type: mime })
+              : null;
+            if (testFile) {
+              if ((navigator as any).canShare) {
+                if ((navigator as any).canShare({ files: [testFile] })) {
+                  file = testFile;
+                  break;
+                }
+              } else {
+                file = testFile;
+                break;
+              }
+            }
+          } catch (e) {
+            // bỏ qua
+          }
         }
 
-        // Kiểm tra trình duyệt có hỗ trợ gửi FILE thực tế không (Web Share API Level 2)
-        if (file && (navigator as any).canShare && (navigator as any).canShare({ files: [file] })) {
+        if (!file && rawBytes) {
+          file = new File([rawBytes as any], fileName, {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          });
+        }
+
+        if (file) {
           await (navigator as any).share({
             files: [file],
             title: fileName,
@@ -41,16 +64,19 @@ export async function shareExcelFile(
           return true;
         }
       } catch (err: any) {
-        // Nếu người dùng bấm "Hủy" chia sẻ trên màn hình điện thoại thì không báo lỗi
+        // Nếu người dùng bấm "Hủy" chia sẻ trên màn hình điện thoại thì không làm gì cả
         if (err.name === 'AbortError') {
           return false;
         }
-        console.warn('Không thể chia sẻ file qua Web Share API, chuyển sang tải về:', err);
+        console.warn('Web Share API không khả dụng hoặc bị chặn, chuyển sang tải về:', err);
       }
 
-      // Nếu trình duyệt không hỗ trợ chia sẻ file trực tiếp (ví dụ trên máy tính Desktop):
+      // Nếu trình duyệt không hỗ trợ chia sẻ file trực tiếp (ví dụ Desktop hoặc trình duyệt trong ứng dụng):
       downloadWebFile(fileUri, fileName);
-      Alert.alert('Đã xuất Excel', `File "${fileName}" đã được tải về máy của bạn thành công!`);
+      Alert.alert(
+        'Đã tải file Excel về máy',
+        `File "${fileName}" đã được tải về máy thành công!\n\n💡 Để gửi qua Zalo: Bạn chỉ cần mở Zalo ➔ Bấm nút đính kèm 📎 ➔ Chọn file vừa tải để gửi ngay.`
+      );
       return true;
     }
 
