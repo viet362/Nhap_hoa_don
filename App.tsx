@@ -7,6 +7,7 @@ import {
   Alert,
   ActivityIndicator,
   Text,
+  Platform,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { InvoiceItem, ExportSettings, sortInvoicesAscending } from './src/types/invoice';
@@ -16,13 +17,14 @@ import { InvoiceTable } from './src/components/InvoiceTable';
 import { ExportShareBar } from './src/components/ExportShareBar';
 import { ApiKeyModal } from './src/components/ApiKeyModal';
 import { ConfirmModal } from './src/components/ConfirmModal';
+import { AppShareModal } from './src/components/AppShareModal';
 import {
   getStoredApiKey,
   saveStoredApiKey,
   extractInvoiceWithGemini,
 } from './src/services/geminiService';
 import { generateInvoiceExcel } from './src/services/excelService';
-import { shareExcelFile } from './src/services/shareService';
+import { shareExcelFile, downloadWebFile } from './src/services/shareService';
 
 // Khởi tạo ngày hôm nay theo định dạng chuẩn
 function getTodayFormats() {
@@ -51,6 +53,9 @@ export default function App() {
   const [apiKey, setApiKey] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [exportedFileName, setExportedFileName] = useState('');
+  const [exportedFileUri, setExportedFileUri] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
@@ -165,13 +170,31 @@ export default function App() {
     }
 
     try {
+      setIsExporting(true);
       // 1. Tạo file Excel chuẩn 100% định dạng mẫu
       const { fileUri, fileName, rawBytes } = await generateInvoiceExcel(items, settings);
+      setExportedFileName(fileName);
+      setExportedFileUri(fileUri);
 
-      // 2. Kích hoạt Native Share Sheet (Zalo, Tin nhắn, Mail, AirDrop)
-      await shareExcelFile(fileUri, fileName, rawBytes);
+      // 2. Nếu đang chạy trên Native App (Expo Go / APK Android): Dùng Native Sharing của hệ điều hành
+      if (Platform.OS !== 'web') {
+        await shareExcelFile(fileUri, fileName, rawBytes);
+      } else {
+        // Trên Web di động:
+        // Tự động tải file về máy và mở Bảng chọn ứng dụng (Zalo, Tin nhắn, Gmail, Telegram...)
+        downloadWebFile(fileUri, fileName);
+        setIsShareModalOpen(true);
+      }
     } catch (err: any) {
       Alert.alert('Lỗi xuất file', err?.message || 'Không thể tạo file Excel.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleRedownload = () => {
+    if (exportedFileUri && exportedFileName) {
+      downloadWebFile(exportedFileUri, exportedFileName);
     }
   };
 
@@ -243,6 +266,15 @@ export default function App() {
           cancelText="Hủy"
           onConfirm={handleConfirmClearAll}
           onCancel={() => setIsConfirmClearOpen(false)}
+        />
+
+        {/* Modal bảng chọn ứng dụng gửi file (Zalo, Tin nhắn, Gmail, Telegram, Messenger, Viber...) */}
+        <AppShareModal
+          visible={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          fileName={exportedFileName || `BẢNG KÊ HÀNG HÓA MUA VÀO NGÀY ${settings.fileNameDate}.xlsx`}
+          itemCount={items.length}
+          onRedownload={handleRedownload}
         />
       </SafeAreaView>
     </SafeAreaProvider>

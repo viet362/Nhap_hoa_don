@@ -51,7 +51,7 @@ export const ExportShareBar: React.FC<ExportShareBarProps> = ({
                 XUẤT & CHIA SẺ FILE (ZALO, TIN NHẮN...)
               </Text>
               <Text style={styles.shareBtnSubText}>
-                Gửi trực tiếp qua Zalo, iMessage, Mail, AirDrop
+                Tải file và chọn gửi qua Zalo, Tin nhắn, Mail, Telegram...
               </Text>
             </View>
           </View>
