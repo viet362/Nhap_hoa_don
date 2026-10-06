@@ -114,6 +114,11 @@ export default function App() {
           errorMessage: err?.message,
         });
       }
+
+      // Giãn cách 800ms giữa các ảnh để bảo đảm không bị nghẽn giới hạn gọi API (Rate Limit)
+      if (i < uris.length - 1) {
+        await new Promise((r) => setTimeout(r, 800));
+      }
     }
 
     setItems((prev) => [...prev, ...newItems]);
@@ -138,8 +143,15 @@ export default function App() {
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Xóa toàn bộ danh sách
+  // Xóa toàn bộ danh sách (Hỗ trợ cả Web confirm và Mobile Alert)
   const handleClearAll = () => {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ danh sách hóa đơn hiện tại?')) {
+        setItems([]);
+      }
+      return;
+    }
+
     Alert.alert('Xác nhận', 'Bạn có chắc chắn muốn xóa toàn bộ danh sách hóa đơn hiện tại?', [
       { text: 'Hủy', style: 'cancel' },
       { text: 'Xóa tất cả', style: 'destructive', onPress: () => setItems([]) },

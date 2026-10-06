@@ -145,6 +145,75 @@ export const SAMPLE_PRESET_INVOICES: Omit<InvoiceItem, 'id' | 'status'>[] = [
   },
 ];
 
+async function prepareImageBase64(
+  imageUri: string
+): Promise<{ base64: string; mimeType: string }> {
+  // Hỗ trợ Web: Nén ảnh qua Canvas (tối đa 1600px) giúp giảm dung lượng từ 10MB xuống ~250KB
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const MAX_SIZE = 1600;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX_SIZE || h > MAX_SIZE) {
+            if (w > h) {
+              h = Math.round((h * MAX_SIZE) / w);
+              w = MAX_SIZE;
+            } else {
+              w = Math.round((w * MAX_SIZE) / h);
+              h = MAX_SIZE;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            throw new Error('Canvas 2D context not available');
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          const parts = dataUrl.split(',');
+          resolve({
+            base64: parts[1] || parts[0],
+            mimeType: 'image/jpeg',
+          });
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        // Dự phòng: đọc trực tiếp FileReader nếu ảnh không load qua Image
+        fetch(imageUri)
+          .then((r) => r.blob())
+          .then((blob) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const res = reader.result as string;
+              resolve({
+                base64: res.includes(',') ? res.split(',')[1] : res,
+                mimeType: blob.type || 'image/jpeg',
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          })
+          .catch(reject);
+      };
+      img.src = imageUri;
+    });
+  }
+
+  // Môi trường Mobile Native (Expo Go / APK)
+  const base64Data = await FileSystem.readAsStringAsync(imageUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return { base64: base64Data, mimeType: 'image/jpeg' };
+}
+
 export async function extractInvoiceWithGemini(
   imageUri: string,
   apiKey: string,
@@ -154,26 +223,8 @@ export async function extractInvoiceWithGemini(
     throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở Cài đặt để nhập API Key.');
   }
 
-  // Đọc ảnh sang base64 (hỗ trợ cả Mobile Native và Web)
-  let base64Data = '';
-  if (typeof window !== 'undefined' && (imageUri.startsWith('blob:') || imageUri.startsWith('data:'))) {
-    const res = await fetch(imageUri);
-    const blob = await res.blob();
-    base64Data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        const b64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(b64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } else {
-    base64Data = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-  }
+  // Đọc và nén ảnh tối ưu cho AI nhận diện
+  const { base64: base64Data, mimeType } = await prepareImageBase64(imageUri);
 
   const prompt = `Bạn là chuyên gia trích xuất dữ liệu hóa đơn điện tử giá trị gia tăng (VAT) Việt Nam.
 Hãy đọc ảnh hóa đơn này và trích xuất chính xác các thông tin:
@@ -206,44 +257,57 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
   let lastError = '';
 
   for (const model of CANDIDATE_MODELS) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: 'image/jpeg',
-                    data: base64Data,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            response_mime_type: 'application/json',
-          },
-        }),
-      });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-      if (response.ok) {
-        const jsonResponse = await response.json();
-        textContent = jsonResponse.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (textContent) {
-          break; // Thành công
+    // Thử lại tối đa 3 lần nếu gặp lỗi Rate Limit (429) hoặc Máy chủ quá tải (503)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: mimeType,
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              response_mime_type: 'application/json',
+            },
+          }),
+        });
+
+        if (response.ok) {
+          const jsonResponse = await response.json();
+          textContent = jsonResponse.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (textContent) {
+            break; // Thành công
+          }
+        } else if (response.status === 429 || response.status === 503) {
+          // Bị rate limit hoặc server bận -> nghỉ 2s rồi thử lại
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        } else {
+          const errorText = await response.text();
+          lastError = `Model ${model} (${response.status}): ${errorText}`;
+          break; // Lỗi khác (ví dụ 400), chuyển model tiếp theo
         }
-      } else {
-        const errorText = await response.text();
-        lastError = `Model ${model} (${response.status}): ${errorText}`;
+      } catch (e: any) {
+        lastError = e?.message || String(e);
+        await new Promise((r) => setTimeout(r, 1000));
       }
-    } catch (e: any) {
-      lastError = e?.message || String(e);
+    }
+
+    if (textContent) {
+      break;
     }
   }
 
@@ -251,9 +315,15 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
     throw new Error(`Gemini API không thể xử lý ảnh: ${lastError}`);
   }
 
-  // Parse JSON
-  const cleaned = textContent.replace(/```json/g, '').replace(/```/g, '').trim();
-  const parsed = JSON.parse(cleaned);
+  // Parse JSON an toàn: Tìm cặp ngoặc { và } để loại bỏ mọi ký tự thừa
+  const firstBrace = textContent.indexOf('{');
+  const lastBrace = textContent.lastIndexOf('}');
+  const jsonStr =
+    firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace
+      ? textContent.substring(firstBrace, lastBrace + 1)
+      : textContent.replace(/```json/g, '').replace(/```/g, '').trim();
+
+  const parsed = JSON.parse(jsonStr);
 
   const weightNum = parseVietnameseNumber(parsed.weight);
   const priceNum = parseVietnameseNumber(parsed.unitPrice);
