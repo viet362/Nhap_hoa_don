@@ -1,25 +1,47 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Bảng Kê Hóa Đơn",
+    "slug": "bang-ke-hoa-don",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.inputapp.bangkehoadon",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ứng dụng cần quyền Camera để chụp ảnh hóa đơn.",
+        "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền Thư viện ảnh để chọn ảnh hóa đơn."
+      }
     },
     "android": {
+      "package": "com.inputapp.bangkehoadon",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần quyền truy cập ảnh để chọn hóa đơn.",
+          "cameraPermission": "Ứng dụng cần quyền Camera để chụp hóa đơn."
+        }
+      ]
+    ]
   }
 }
