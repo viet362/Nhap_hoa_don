@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx-js-style';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as fflate from 'fflate';
-import { InvoiceItem, ExportSettings } from '../types/invoice';
+import { InvoiceItem, ExportSettings, sortInvoicesAscending } from '../types/invoice';
 
 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 
@@ -254,9 +254,10 @@ export async function generateInvoiceExcel(
   setCell(3, 11, '(7)', 's', styleSubNumTimes);
   setCell(3, 12, '(8)', 's', styleSubNumTimes);
 
-  // Dòng 5 trở đi: Ghi từng hóa đơn
+  // Dòng 5 trở đi: Ghi từng hóa đơn (ĐÃ ĐƯỢC TỰ ĐỘNG SẮP XẾP SỐ HÓA ĐƠN TĂNG DẦN)
+  const sortedItems = sortInvoicesAscending(items);
   const startRow = 4; // index 4 tương đương Row 5
-  items.forEach((item, idx) => {
+  sortedItems.forEach((item, idx) => {
     const r = startRow + idx;
     const rowNum = r + 1;
 
@@ -317,7 +318,7 @@ export async function generateInvoiceExcel(
     setCell(r, 12, '', 's', styleDataCenter);
   });
 
-  const endRowIdx = items.length > 0 ? startRow + items.length - 1 : startRow;
+  const endRowIdx = sortedItems.length > 0 ? startRow + sortedItems.length - 1 : startRow;
   const totalRowIdx = endRowIdx + 1;
   const totalRowNum = totalRowIdx + 1;
   const firstDataRowNum = startRow + 1;
@@ -325,7 +326,7 @@ export async function generateInvoiceExcel(
 
   // Dòng Tổng cộng - Đóng khung viền mỏng đầy đủ cho tất cả các ô từ Cột A đến Cột M
   for (let c = 0; c <= 12; c++) {
-    if (c === 10 && items.length > 0) {
+    if (c === 10 && sortedItems.length > 0) {
       // Ô Tổng cộng K
       setCell(
         totalRowIdx,
@@ -365,7 +366,7 @@ export async function generateInvoiceExcel(
     { hpt: 69.6 },  // Row 3: Tiêu đề bảng cấp 2
     { hpt: 18.75 }, // Row 4: Chỉ số cột (1), (2)...
   ];
-  const dataRowCount = items.length > 0 ? items.length : 1;
+  const dataRowCount = sortedItems.length > 0 ? sortedItems.length : 1;
   for (let i = 0; i < dataRowCount; i++) {
     rowsConfig.push({ hpt: 36.0 }); // Các dòng dữ liệu
   }

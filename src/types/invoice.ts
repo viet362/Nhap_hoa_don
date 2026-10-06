@@ -19,3 +19,22 @@ export interface ExportSettings {
   fileNameDate: string;            // Định dạng DD.MM.YY (vd: 06.10.26)
   useCreationDateForAll: boolean;  // Thay toàn bộ cột F bằng ngày tạo
 }
+
+export function getInvoiceNumericValue(invNum: number | string): number {
+  if (typeof invNum === 'number') return invNum;
+  const match = String(invNum).match(/\d+/);
+  return match ? parseInt(match[0], 10) : 0;
+}
+
+export function sortInvoicesAscending(items: InvoiceItem[]): InvoiceItem[] {
+  return [...items].sort((a, b) => {
+    const numA = getInvoiceNumericValue(a.invoiceNumber);
+    const numB = getInvoiceNumericValue(b.invoiceNumber);
+    if (numA !== numB) {
+      return numA - numB;
+    }
+    return String(a.invoiceNumber).localeCompare(String(b.invoiceNumber), undefined, {
+      numeric: true,
+    });
+  });
+}

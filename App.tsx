@@ -9,7 +9,7 @@ import {
   Text,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { InvoiceItem, ExportSettings } from './src/types/invoice';
+import { InvoiceItem, ExportSettings, sortInvoicesAscending } from './src/types/invoice';
 import { Header } from './src/components/Header';
 import { ImagePickerSection } from './src/components/ImagePickerSection';
 import { InvoiceTable } from './src/components/InvoiceTable';
@@ -123,7 +123,7 @@ export default function App() {
       }
     }
 
-    setItems((prev) => [...prev, ...newItems]);
+    setItems((prev) => sortInvoicesAscending([...prev, ...newItems]));
     setIsProcessing(false);
     setProcessingStatus('');
   };
@@ -133,10 +133,12 @@ export default function App() {
     setSettings((prev) => ({ ...prev, ...updates }));
   };
 
-  // Sửa một dòng hóa đơn
+  // Sửa một dòng hóa đơn (tự động giữ thứ tự tăng dần)
   const handleUpdateItem = (id: string, updates: Partial<InvoiceItem>) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+      sortInvoicesAscending(
+        prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+      )
     );
   };
 

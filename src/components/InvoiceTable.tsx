@@ -95,7 +95,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
 
       {/* Tiêu đề danh sách & nút xóa tất cả */}
       <View style={styles.listHeaderRow}>
-        <Text style={styles.listHeaderTitle}>CHI TIẾT CÁC DÒNG HÓA ĐƠN</Text>
+        <Text style={styles.listHeaderTitle}>CHI TIẾT HÓA ĐƠN (SỐ HĐ TĂNG DẦN ⬆️)</Text>
         {items.length > 0 && (
           <TouchableOpacity
             style={styles.clearAllBtn}
