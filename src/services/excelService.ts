@@ -107,7 +107,7 @@ function parseVietnameseNumber(val: any): number {
 export async function generateInvoiceExcel(
   items: InvoiceItem[],
   settings: ExportSettings
-): Promise<{ fileUri: string; fileName: string }> {
+): Promise<{ fileUri: string; fileName: string; rawBytes?: Uint8Array }> {
   const workbook = XLSX.utils.book_new();
   const ws: XLSX.WorkSheet = {};
 
@@ -464,20 +464,14 @@ export async function generateInvoiceExcel(
 
   const fileName = `BẢNG KÊ HÀNG HÓA MUA VÀO NGÀY ${settings.fileNameDate}.xlsx`;
 
-  // Hỗ trợ Web Browser: Tự động tải file về máy
+  // Hỗ trợ Web Browser: Tạo Blob URL và rawBytes để Share thực tế, KHÔNG tự động click tải về tại đây
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     const bytes = base64ToUint8Array(finalBase64);
     const blob = new Blob([bytes as any], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    return { fileUri: blobUrl, fileName };
+    return { fileUri: blobUrl, fileName, rawBytes: bytes };
   }
 
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';

@@ -156,11 +156,11 @@ export default function App() {
     try {
       setIsExporting(true);
       // 1. Tạo file Excel chuẩn 100% định dạng mẫu
-      const { fileUri, fileName } = await generateInvoiceExcel(items, settings);
+      const { fileUri, fileName, rawBytes } = await generateInvoiceExcel(items, settings);
 
       // 2. Kích hoạt Native Share Sheet (Zalo, Tin nhắn, Mail, AirDrop)
       setIsExporting(false);
-      await shareExcelFile(fileUri, fileName);
+      await shareExcelFile(fileUri, fileName, rawBytes);
     } catch (err: any) {
       setIsExporting(false);
       Alert.alert('Lỗi xuất file', err?.message || 'Không thể tạo file Excel.');
