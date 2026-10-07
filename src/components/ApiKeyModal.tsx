@@ -24,6 +24,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState(apiKey);
 
+  React.useEffect(() => {
+    setInputValue(apiKey);
+  }, [apiKey, visible]);
+
   const handleSave = () => {
     onSave(inputValue.trim());
     Alert.alert('Thành công', 'Đã lưu cấu hình Gemini API Key.');

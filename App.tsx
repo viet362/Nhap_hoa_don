@@ -87,50 +87,58 @@ export default function App() {
     setIsProcessing(true);
     const newItems: InvoiceItem[] = [];
 
-    for (let i = 0; i < uris.length; i++) {
-      setProcessingStatus(`Đang đọc ảnh ${i + 1}/${uris.length}...`);
-      try {
-        const extracted = await extractInvoiceWithGemini(uris[i], apiKey, settings.creationDate);
-        newItems.push({
-          id: `item-${Date.now()}-${i}`,
-          invoiceNumber: extracted.invoiceNumber || `HĐ-${i + 1}`,
-          originalInvoiceDate: extracted.originalInvoiceDate || settings.creationDate,
-          appliedDate: settings.creationDate,
-          sellerName: extracted.sellerName || 'Cty TNHH Thuỷ sản Công nghệ cao Việt Nam - CN 1 tại Huế',
-          productName: extracted.productName || 'Tôm Thẻ Chân Trắng',
-          weight: extracted.weight || 0,
-          unitPrice: extracted.unitPrice || 0,
-          totalAmount: extracted.totalAmount || 0,
-          imageUri: uris[i],
-          status: 'done',
-        });
-      } catch (err: any) {
-        console.error('Lỗi khi bóc tách ảnh:', err);
-        newItems.push({
-          id: `item-${Date.now()}-${i}`,
-          invoiceNumber: `Lỗi-${i + 1}`,
-          originalInvoiceDate: settings.creationDate,
-          appliedDate: settings.creationDate,
-          sellerName: 'Không nhận diện được',
-          productName: 'Vui lòng kiểm tra lại ảnh',
-          weight: 0,
-          unitPrice: 0,
-          totalAmount: 0,
-          imageUri: uris[i],
-          status: 'error',
-          errorMessage: err?.message,
-        });
+    try {
+      for (let i = 0; i < uris.length; i++) {
+        setProcessingStatus(`Đang đọc ảnh ${i + 1}/${uris.length}...`);
+        try {
+          const extracted = await extractInvoiceWithGemini(
+            uris[i],
+            apiKey,
+            settings.creationDate,
+            (status) => setProcessingStatus(`Ảnh ${i + 1}/${uris.length}: ${status}`)
+          );
+          newItems.push({
+            id: `item-${Date.now()}-${i}`,
+            invoiceNumber: extracted.invoiceNumber || `HĐ-${i + 1}`,
+            originalInvoiceDate: extracted.originalInvoiceDate || settings.creationDate,
+            appliedDate: settings.creationDate,
+            sellerName: extracted.sellerName || 'Cty TNHH Thuỷ sản Công nghệ cao Việt Nam - CN 1 tại Huế',
+            productName: extracted.productName || 'Tôm Thẻ Chân Trắng',
+            weight: extracted.weight || 0,
+            unitPrice: extracted.unitPrice || 0,
+            totalAmount: extracted.totalAmount || 0,
+            imageUri: uris[i],
+            status: 'done',
+          });
+        } catch (err: any) {
+          console.error('Lỗi khi bóc tách ảnh:', err);
+          newItems.push({
+            id: `item-${Date.now()}-${i}`,
+            invoiceNumber: `Lỗi-${i + 1}`,
+            originalInvoiceDate: settings.creationDate,
+            appliedDate: settings.creationDate,
+            sellerName: 'Không nhận diện được',
+            productName: 'Vui lòng kiểm tra lại ảnh',
+            weight: 0,
+            unitPrice: 0,
+            totalAmount: 0,
+            imageUri: uris[i],
+            status: 'error',
+            errorMessage: err?.message,
+          });
+        }
+
+        // Giãn cách 800ms giữa các ảnh để bảo đảm không bị nghẽn giới hạn gọi API (Rate Limit)
+        if (i < uris.length - 1) {
+          await new Promise((r) => setTimeout(r, 800));
+        }
       }
 
-      // Giãn cách 800ms giữa các ảnh để bảo đảm không bị nghẽn giới hạn gọi API (Rate Limit)
-      if (i < uris.length - 1) {
-        await new Promise((r) => setTimeout(r, 800));
-      }
+      setItems((prev) => sortInvoicesAscending([...prev, ...newItems]));
+    } finally {
+      setIsProcessing(false);
+      setProcessingStatus('');
     }
-
-    setItems((prev) => sortInvoicesAscending([...prev, ...newItems]));
-    setIsProcessing(false);
-    setProcessingStatus('');
   };
 
   // Cập nhật cấu hình bảng kê (ngày tạo, tùy chọn ngày)

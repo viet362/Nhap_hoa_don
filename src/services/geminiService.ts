@@ -150,60 +150,98 @@ async function prepareImageBase64(
 ): Promise<{ base64: string; mimeType: string }> {
   // Hỗ trợ Web: Nén ảnh qua Canvas (tối đa 1600px) giúp giảm dung lượng từ 10MB xuống ~250KB
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        try {
-          const MAX_SIZE = 1600;
-          let w = img.width;
-          let h = img.height;
-          if (w > MAX_SIZE || h > MAX_SIZE) {
-            if (w > h) {
-              h = Math.round((h * MAX_SIZE) / w);
-              w = MAX_SIZE;
-            } else {
-              w = Math.round((w * MAX_SIZE) / h);
-              h = MAX_SIZE;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            throw new Error('Canvas 2D context not available');
-          }
-          ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-          const parts = dataUrl.split(',');
-          resolve({
-            base64: parts[1] || parts[0],
-            mimeType: 'image/jpeg',
-          });
-        } catch (e) {
-          reject(e);
+    return new Promise((resolve) => {
+      let isSettled = false;
+      const safeResolve = (res: { base64: string; mimeType: string }) => {
+        if (!isSettled) {
+          isSettled = true;
+          resolve(res);
         }
       };
-      img.onerror = () => {
-        // Dự phòng: đọc trực tiếp FileReader nếu ảnh không load qua Image
+
+      // Fallback đọc trực tiếp FileReader nếu Canvas / Image gặp sự cố
+      const fallbackFileReader = () => {
         fetch(imageUri)
           .then((r) => r.blob())
           .then((blob) => {
             const reader = new FileReader();
             reader.onloadend = () => {
               const res = reader.result as string;
-              resolve({
+              safeResolve({
                 base64: res.includes(',') ? res.split(',')[1] : res,
-                mimeType: blob.type || 'image/jpeg',
+                mimeType: blob.type && blob.type.startsWith('image/') ? blob.type : 'image/jpeg',
               });
             };
-            reader.onerror = reject;
+            reader.onerror = () => {
+              safeResolve({ base64: '', mimeType: 'image/jpeg' });
+            };
             reader.readAsDataURL(blob);
           })
-          .catch(reject);
+          .catch(() => safeResolve({ base64: '', mimeType: 'image/jpeg' }));
       };
-      img.src = imageUri;
+
+      // Timeout tối đa 6 giây: Nếu browser không kích hoạt onload/onerror, tự động fallback
+      const timer = setTimeout(() => {
+        fallbackFileReader();
+      }, 6000);
+
+      try {
+        const img = new Image();
+        // QUAN TRỌNG: KHÔNG gán crossOrigin cho blob: hoặc data: vì sẽ gây lỗi CORS / treo load
+        if (!imageUri.startsWith('blob:') && !imageUri.startsWith('data:')) {
+          img.crossOrigin = 'anonymous';
+        }
+
+        img.onload = () => {
+          clearTimeout(timer);
+          try {
+            const MAX_SIZE = 1600;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX_SIZE || h > MAX_SIZE) {
+              if (w > h) {
+                h = Math.round((h * MAX_SIZE) / w);
+                w = MAX_SIZE;
+              } else {
+                w = Math.round((w * MAX_SIZE) / h);
+                h = MAX_SIZE;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              fallbackFileReader();
+              return;
+            }
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+            const parts = dataUrl.split(',');
+            safeResolve({
+              base64: parts[1] || parts[0],
+              mimeType: 'image/jpeg',
+            });
+          } catch {
+            fallbackFileReader();
+          }
+        };
+
+        img.onerror = () => {
+          clearTimeout(timer);
+          fallbackFileReader();
+        };
+
+        img.src = imageUri;
+
+        // Nếu ảnh đã hoàn tất trong bộ nhớ cache
+        if (img.complete && img.naturalWidth > 0) {
+          (img.onload as any)();
+        }
+      } catch {
+        clearTimeout(timer);
+        fallbackFileReader();
+      }
     });
   }
 
@@ -217,14 +255,20 @@ async function prepareImageBase64(
 export async function extractInvoiceWithGemini(
   imageUri: string,
   apiKey: string,
-  creationDate: string
+  creationDate: string,
+  onStatusUpdate?: (status: string) => void
 ): Promise<Partial<InvoiceItem>> {
   if (!apiKey) {
     throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở Cài đặt để nhập API Key.');
   }
 
   // Đọc và nén ảnh tối ưu cho AI nhận diện
+  onStatusUpdate?.('Đang nén và chuẩn bị ảnh...');
   const { base64: base64Data, mimeType } = await prepareImageBase64(imageUri);
+
+  if (!base64Data) {
+    throw new Error('Không thể đọc dữ liệu ảnh hóa đơn.');
+  }
 
   const prompt = `Bạn là chuyên gia trích xuất dữ liệu hóa đơn điện tử giá trị gia tăng (VAT) Việt Nam.
 Hãy đọc ảnh hóa đơn này và trích xuất chính xác các thông tin:
@@ -247,24 +291,33 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
   "totalAmount": 1018298700
 }`;
 
+  // Danh sách các model Flash phổ biến và ổn định nhất của Gemini
   const CANDIDATE_MODELS = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
     'gemini-3.8-flash',
     'gemini-3.1-flash-lite',
-    'gemini-flash-latest',
   ];
 
   let textContent = '';
   let lastError = '';
 
   for (const model of CANDIDATE_MODELS) {
+    onStatusUpdate?.(`AI đang đọc hóa đơn (${model})...`);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    // Thử lại tối đa 3 lần nếu gặp lỗi Rate Limit (429) hoặc Máy chủ quá tải (503)
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Thử lại tối đa 2 lần cho mỗi model để không làm người dùng chờ quá lâu
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        // Thiết lập timeout 20s cho mỗi request tránh treo vĩnh viễn
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             contents: [
               {
@@ -286,23 +339,33 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
           }),
         });
 
+        clearTimeout(timeoutId);
+
         if (response.ok) {
           const jsonResponse = await response.json();
-          textContent = jsonResponse.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const parts = jsonResponse.candidates?.[0]?.content?.parts || [];
+          // Lấy part văn bản thực tế (bỏ qua thought part nếu có)
+          const validPart = parts.find((p: any) => p.text && !p.thought) || parts[0];
+          textContent = validPart?.text || '';
           if (textContent) {
             break; // Thành công
           }
         } else if (response.status === 429 || response.status === 503) {
-          // Bị rate limit hoặc server bận -> nghỉ 2s rồi thử lại
-          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          // Bị rate limit hoặc server bận
+          onStatusUpdate?.(`Đang thử lại kết nối AI (${attempt + 1})...`);
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
         } else {
           const errorText = await response.text();
           lastError = `Model ${model} (${response.status}): ${errorText}`;
-          break; // Lỗi khác (ví dụ 400), chuyển model tiếp theo
+          break; // Lỗi khác (ví dụ 400 hoặc 404), chuyển ngay sang model tiếp theo
         }
       } catch (e: any) {
-        lastError = e?.message || String(e);
-        await new Promise((r) => setTimeout(r, 1000));
+        if (e.name === 'AbortError') {
+          lastError = `Kết nối model ${model} quá hạn (timeout 20s).`;
+        } else {
+          lastError = e?.message || String(e);
+        }
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
