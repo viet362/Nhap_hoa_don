@@ -118,14 +118,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Thông báo bảo mật */}
-            <View style={styles.securityBox}>
-              <Text style={styles.securityIcon}>🔒</Text>
-              <Text style={styles.securityText}>
-                API Key được che mặc định. Cần nhập mật khẩu (8888) khi nhấn hiện để bảo vệ thông tin.
-              </Text>
-            </View>
-
             {/* KEY 1: API Key chính */}
             <View style={styles.fieldGroup}>
               <View style={styles.labelRow}>
