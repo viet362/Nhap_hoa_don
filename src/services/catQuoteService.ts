@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 export interface CatQuoteItem {
   id?: number | string;
@@ -8,6 +9,7 @@ export interface CatQuoteItem {
 const STORAGE_CAT_QUOTES = '@cat_quotes_list';
 const STORAGE_CAT_ENABLED = '@cat_companion_enabled';
 const STORAGE_SYNC_API_URL = '@cat_quotes_api_url';
+const DEFAULT_ONLINE_API_URL = 'https://nhaphoadon.netlify.app/api/cat-quotes';
 
 export const DEFAULT_CAT_QUOTES: string[] = [
   'Hôm nay làm việc năng suất nha vợ! 🐾',
@@ -63,9 +65,16 @@ export async function setCatEnabled(enabled: boolean): Promise<void> {
 export async function getSyncApiUrl(): Promise<string> {
   try {
     const url = await AsyncStorage.getItem(STORAGE_SYNC_API_URL);
-    return url || '/api/cat-quotes';
+    if (url && url.trim()) {
+      const trimmed = url.trim();
+      if (Platform.OS !== 'web' && trimmed.startsWith('/')) {
+        return `${DEFAULT_ONLINE_API_URL}${trimmed.replace(/^\/api\/cat-quotes/, '')}`;
+      }
+      return trimmed;
+    }
+    return Platform.OS === 'web' ? '/api/cat-quotes' : DEFAULT_ONLINE_API_URL;
   } catch {
-    return '/api/cat-quotes';
+    return Platform.OS === 'web' ? '/api/cat-quotes' : DEFAULT_ONLINE_API_URL;
   }
 }
 
