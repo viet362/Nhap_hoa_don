@@ -104,6 +104,20 @@ function parseVietnameseNumber(val: any): number {
   return isNaN(n) ? 0 : n;
 }
 
+export function formatDecimalComma(val: number): string {
+  const parts = Number(val || 0).toFixed(2).split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${intPart},${parts[1]}`;
+}
+
+export function formatDecimalDot(val: number): string {
+  const parts = Number(val || 0).toFixed(2).split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${intPart}.${parts[1]}`;
+}
+
+
+
 export async function generateInvoiceExcel(
   items: InvoiceItem[],
   settings: ExportSettings
@@ -298,18 +312,31 @@ export async function generateInvoiceExcel(
     // H: Tên hàng hoá
     setCell(r, 7, item.productName, 's', styleDataCenter);
 
-    // I: Trọng lượng (kg) - Đảm bảo luôn là số Float thuần túy, định dạng '#,##0.00'
+    // I: Trọng lượng (kg)
     const weightVal =
       typeof item.weight === 'number' ? item.weight : parseVietnameseNumber(item.weight);
-    setCell(r, 8, weightVal || 0, 'n', styleDataCenter, '#,##0.00');
-
     // J: Đơn giá
     const priceVal =
       typeof item.unitPrice === 'number' ? item.unitPrice : parseVietnameseNumber(item.unitPrice);
-    setCell(r, 9, Math.round(priceVal || 0), 'n', styleDataCenter, '#,##0');
+    const lineTotal = Math.round((weightVal || 0) * (priceVal || 0));
 
-    // K: Thành tiền = I*J (Công thức)
-    setCell(r, 10, 0, 'n', styleDataCenter, '#,##0', `I${rowNum}*J${rowNum}`);
+    const decSep = settings.decimalSeparator || 'auto';
+    if (decSep === 'comma') {
+      // Ép buộc dấu phẩy (,) cho phần thập phân (chuẩn VN: 1.363,25)
+      setCell(r, 8, formatDecimalComma(weightVal || 0), 's', styleDataCenter);
+      setCell(r, 9, Math.round(priceVal || 0), 'n', styleDataCenter, '#,##0');
+      setCell(r, 10, lineTotal, 'n', styleDataCenter, '#,##0');
+    } else if (decSep === 'dot') {
+      // Ép buộc dấu chấm (.) cho phần thập phân (chuẩn US: 1,363.25)
+      setCell(r, 8, formatDecimalDot(weightVal || 0), 's', styleDataCenter);
+      setCell(r, 9, Math.round(priceVal || 0), 'n', styleDataCenter, '#,##0');
+      setCell(r, 10, lineTotal, 'n', styleDataCenter, '#,##0');
+    } else {
+      // 'auto': Tự động theo máy/khu vực hệ điều hành (kiểu Number Float '#,##0.00' kèm công thức Excel)
+      setCell(r, 8, weightVal || 0, 'n', styleDataCenter, '#,##0.00');
+      setCell(r, 9, Math.round(priceVal || 0), 'n', styleDataCenter, '#,##0');
+      setCell(r, 10, lineTotal, 'n', styleDataCenter, '#,##0', `I${rowNum}*J${rowNum}`);
+    }
 
     // L: Thuế GTGT
     setCell(r, 11, '', 's', styleDataCenter);
@@ -324,6 +351,13 @@ export async function generateInvoiceExcel(
   const firstDataRowNum = startRow + 1;
   const lastDataRowNum = endRowIdx + 1;
 
+  // Tính tổng thành tiền trước để đảm bảo giá trị hiển thị luôn chính xác 100%
+  const grandTotal = sortedItems.reduce((acc, it) => {
+    const w = typeof it.weight === 'number' ? it.weight : parseVietnameseNumber(it.weight);
+    const p = typeof it.unitPrice === 'number' ? it.unitPrice : parseVietnameseNumber(it.unitPrice);
+    return acc + Math.round((w || 0) * (p || 0));
+  }, 0);
+
   // Dòng Tổng cộng - Đóng khung viền mỏng đầy đủ cho tất cả các ô từ Cột A đến Cột M
   for (let c = 0; c <= 12; c++) {
     if (c === 10 && sortedItems.length > 0) {
@@ -331,7 +365,7 @@ export async function generateInvoiceExcel(
       setCell(
         totalRowIdx,
         c,
-        0,
+        grandTotal,
         'n',
         styleSum,
         '#,##0',

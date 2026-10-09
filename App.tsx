@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InvoiceItem, ExportSettings, sortInvoicesAscending } from './src/types/invoice';
 import { Header } from './src/components/Header';
 import { ImagePickerSection } from './src/components/ImagePickerSection';
@@ -47,6 +48,7 @@ export default function App() {
     creationDate,
     fileNameDate,
     useCreationDateForAll: true, // Mặc định: Thay ngày trên cột F bằng ngày tạo
+    decimalSeparator: 'auto',    // Mặc định: Tự động theo máy
   });
 
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -60,11 +62,20 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
 
-  // Tải API Key đã lưu từ trước
+  // Tải API Key và Cấu hình đã lưu từ trước
   useEffect(() => {
     (async () => {
       const stored = await getStoredApiKey();
       if (stored) setApiKey(stored);
+
+      try {
+        const storedSep = await AsyncStorage.getItem('@export_decimal_separator');
+        if (storedSep === 'auto' || storedSep === 'comma' || storedSep === 'dot') {
+          setSettings((prev) => ({ ...prev, decimalSeparator: storedSep }));
+        }
+      } catch (e) {
+        console.warn('Lỗi đọc cấu hình dấu thập phân:', e);
+      }
     })();
   }, []);
 
@@ -141,9 +152,14 @@ export default function App() {
     }
   };
 
-  // Cập nhật cấu hình bảng kê (ngày tạo, tùy chọn ngày)
+  // Cập nhật cấu hình bảng kê (ngày tạo, tùy chọn ngày, dấu thập phân)
   const handleUpdateSettings = (updates: Partial<ExportSettings>) => {
     setSettings((prev) => ({ ...prev, ...updates }));
+    if (updates.decimalSeparator) {
+      AsyncStorage.setItem('@export_decimal_separator', updates.decimalSeparator).catch((e) => {
+        console.warn('Không thể lưu cấu hình dấu thập phân:', e);
+      });
+    }
   };
 
   // Sửa một dòng hóa đơn (tự động giữ thứ tự tăng dần)

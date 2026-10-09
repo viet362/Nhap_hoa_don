@@ -9,6 +9,7 @@ import {
   Switch,
 } from 'react-native';
 import { InvoiceItem, ExportSettings } from '../types/invoice';
+import { formatDecimalComma, formatDecimalDot } from '../services/excelService';
 
 interface InvoiceTableProps {
   items: InvoiceItem[];
@@ -34,9 +35,17 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
     0
   );
 
+  const currentDecSep = settings.decimalSeparator || 'auto';
+  const displayTotalWeight =
+    currentDecSep === 'comma'
+      ? formatDecimalComma(totalWeight)
+      : currentDecSep === 'dot'
+      ? formatDecimalDot(totalWeight)
+      : totalWeight.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+
   return (
     <View style={styles.container}>
-      {/* Cấu hình ngày tạo bảng kê */}
+      {/* Cấu hình ngày tạo bảng kê & tùy chọn xuất file */}
       <View style={styles.configCard}>
         <View style={styles.configRow}>
           <View style={styles.dateInputContainer}>
@@ -71,6 +80,73 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
             thumbColor={settings.useCreationDateForAll ? '#38BDF8' : '#94A3B8'}
           />
         </View>
+
+        {/* Tùy chọn dấu ngăn cách phần thập phân */}
+        <View style={styles.decOptionSection}>
+          <Text style={styles.configLabel}>Dấu ngăn cách phần thập phân (Trọng lượng):</Text>
+          <View style={styles.segmentContainer}>
+            <TouchableOpacity
+              style={[
+                styles.segmentBtn,
+                currentDecSep === 'auto' && styles.segmentBtnActive,
+              ]}
+              onPress={() => onUpdateSettings({ decimalSeparator: 'auto' })}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  currentDecSep === 'auto' && styles.segmentTextActive,
+                ]}
+              >
+                Tự động
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.segmentBtn,
+                currentDecSep === 'comma' && styles.segmentBtnActive,
+              ]}
+              onPress={() => onUpdateSettings({ decimalSeparator: 'comma' })}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  currentDecSep === 'comma' && styles.segmentTextActive,
+                ]}
+              >
+                Dấu phẩy (,)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.segmentBtn,
+                currentDecSep === 'dot' && styles.segmentBtnActive,
+              ]}
+              onPress={() => onUpdateSettings({ decimalSeparator: 'dot' })}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  currentDecSep === 'dot' && styles.segmentTextActive,
+                ]}
+              >
+                Dấu chấm (.)
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.decOptionHint}>
+            {currentDecSep === 'auto'
+              ? '💡 Tự động theo cài đặt máy người mở file (mặc định)'
+              : currentDecSep === 'comma'
+              ? '💡 Luôn hiển thị dấu phẩy cho phần thập phân (vd: 1.363,25 kg)'
+              : '💡 Luôn hiển thị dấu chấm cho phần thập phân (vd: 1,363.25 kg)'}
+          </Text>
+        </View>
       </View>
 
       {/* KPI Tóm tắt */}
@@ -82,7 +158,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         <View style={styles.kpiBox}>
           <Text style={styles.kpiTitle}>TỔNG TRỌNG LƯỢNG</Text>
           <Text style={styles.kpiValue}>
-            {totalWeight.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg
+            {displayTotalWeight} kg
           </Text>
         </View>
         <View style={styles.kpiBox}>
@@ -237,6 +313,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#E2E8F0',
     fontWeight: '500',
+  },
+  decOptionSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    paddingTop: 10,
+    marginTop: 10,
+  },
+  segmentContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 4,
+    marginTop: 6,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#0284C7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  decOptionHint: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   kpiContainer: {
     flexDirection: 'row',

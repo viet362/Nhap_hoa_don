@@ -14,10 +14,13 @@ export interface InvoiceItem {
   errorMessage?: string;
 }
 
+export type DecimalSeparatorOption = 'auto' | 'comma' | 'dot';
+
 export interface ExportSettings {
   creationDate: string;            // Định dạng DD/MM/YYYY (vd: 06/10/2026)
   fileNameDate: string;            // Định dạng DD.MM.YY (vd: 06.10.26)
   useCreationDateForAll: boolean;  // Thay toàn bộ cột F bằng ngày tạo
+  decimalSeparator?: DecimalSeparatorOption; // Tùy chọn dấu thập phân: 'auto' (theo máy) | 'comma' (,) | 'dot' (.)
 }
 
 export function getInvoiceNumericValue(invNum: number | string): number {
