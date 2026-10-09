@@ -3,21 +3,34 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InvoiceItem } from '../types/invoice';
 
 const GEMINI_API_KEY_STORAGE = '@gemini_api_key';
+const GEMINI_BACKUP_API_KEY_STORAGE = '@gemini_backup_api_key';
 
-export async function getStoredApiKey(): Promise<string> {
+export async function getStoredApiKeys(): Promise<{ primaryKey: string; backupKey: string }> {
   try {
-    return (await AsyncStorage.getItem(GEMINI_API_KEY_STORAGE)) || '';
+    const primaryKey = (await AsyncStorage.getItem(GEMINI_API_KEY_STORAGE)) || '';
+    const backupKey = (await AsyncStorage.getItem(GEMINI_BACKUP_API_KEY_STORAGE)) || '';
+    return { primaryKey, backupKey };
   } catch {
-    return '';
+    return { primaryKey: '', backupKey: '' };
   }
 }
 
-export async function saveStoredApiKey(key: string): Promise<void> {
+export async function saveStoredApiKeys(primaryKey: string, backupKey: string): Promise<void> {
   try {
-    await AsyncStorage.setItem(GEMINI_API_KEY_STORAGE, key.trim());
+    await AsyncStorage.setItem(GEMINI_API_KEY_STORAGE, primaryKey.trim());
+    await AsyncStorage.setItem(GEMINI_BACKUP_API_KEY_STORAGE, backupKey.trim());
   } catch (e) {
-    console.error('Không thể lưu API Key', e);
+    console.error('Không thể lưu API Keys', e);
   }
+}
+
+export async function getStoredApiKey(): Promise<string> {
+  const { primaryKey } = await getStoredApiKeys();
+  return primaryKey;
+}
+
+export async function saveStoredApiKey(key: string): Promise<void> {
+  await saveStoredApiKeys(key, '');
 }
 
 // 11 Dữ liệu mẫu thực tế đối chiếu từ thư mục Sample
@@ -252,65 +265,33 @@ async function prepareImageBase64(
   return { base64: base64Data, mimeType: 'image/jpeg' };
 }
 
-export async function extractInvoiceWithGemini(
-  imageUri: string,
+// Danh sách các model Flash phổ biến và ổn định nhất của Gemini
+const CANDIDATE_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-3.8-flash',
+  'gemini-3.1-flash-lite',
+];
+
+async function callGeminiModels(
+  base64Data: string,
+  mimeType: string,
+  prompt: string,
   apiKey: string,
-  creationDate: string,
+  keyLabel: string,
   onStatusUpdate?: (status: string) => void
-): Promise<Partial<InvoiceItem>> {
-  if (!apiKey) {
-    throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở Cài đặt để nhập API Key.');
-  }
-
-  // Đọc và nén ảnh tối ưu cho AI nhận diện
-  onStatusUpdate?.('Đang nén và chuẩn bị ảnh...');
-  const { base64: base64Data, mimeType } = await prepareImageBase64(imageUri);
-
-  if (!base64Data) {
-    throw new Error('Không thể đọc dữ liệu ảnh hóa đơn.');
-  }
-
-  const prompt = `Bạn là chuyên gia trích xuất dữ liệu hóa đơn điện tử giá trị gia tăng (VAT) Việt Nam.
-Hãy đọc ảnh hóa đơn này và trích xuất chính xác các thông tin:
-1. invoiceNumber: Số hóa đơn (chỉ lấy số, ví dụ: 208, 395, 340).
-2. originalInvoiceDate: Ngày lập hóa đơn trên ảnh (định dạng DD/MM/YYYY, ví dụ: 11/09/2026).
-3. sellerName: Tên đơn vị bán hàng (rút gọn chuẩn như: 'Cty TNHH Thuỷ sản Công nghệ cao Việt Nam - CN 1 tại Huế').
-4. productName: Tên mặt hàng hóa (ví dụ: 'Tôm Thẻ Chân Trắng Cỡ 30 Con/Kg').
-5. weight: Trọng lượng thực tế tính bằng kg. LƯU Ý QUAN TRỌNG: Hãy lấy số kg thực từ cột 'Số lượng' (ví dụ 5.753,1 thì đổi thành 5753.1). KHÔNG lấy từ cột 'Trọng lượng' nếu cột đó ghi số 0.
-6. unitPrice: Đơn giá mỗi kg dạng số nguyên (ví dụ: 177000, 192000).
-7. totalAmount: Thành tiền chưa thuế dạng số nguyên (ví dụ: 1018298700).
-
-Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown code fence:
-{
-  "invoiceNumber": 208,
-  "originalInvoiceDate": "11/09/2026",
-  "sellerName": "Cty TNHH Thuỷ sản Công nghệ cao Việt Nam - CN 1 tại Huế",
-  "productName": "Tôm Thẻ Chân Trắng Cỡ 30 Con/Kg",
-  "weight": 5753.1,
-  "unitPrice": 177000,
-  "totalAmount": 1018298700
-}`;
-
-  // Danh sách các model Flash phổ biến và ổn định nhất của Gemini
-  const CANDIDATE_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-3.8-flash',
-    'gemini-3.1-flash-lite',
-  ];
-
+): Promise<string> {
   let textContent = '';
   let lastError = '';
 
   for (const model of CANDIDATE_MODELS) {
-    onStatusUpdate?.(`AI đang đọc hóa đơn (${model})...`);
+    onStatusUpdate?.(`${keyLabel}: Đang gọi (${model})...`);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     // Thử lại tối đa 2 lần cho mỗi model để không làm người dùng chờ quá lâu
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // Thiết lập timeout 20s cho mỗi request tránh treo vĩnh viễn
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000);
 
@@ -344,7 +325,6 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
         if (response.ok) {
           const jsonResponse = await response.json();
           const parts = jsonResponse.candidates?.[0]?.content?.parts || [];
-          // Lấy part văn bản thực tế (bỏ qua thought part nếu có)
           const validPart = parts.find((p: any) => p.text && !p.thought) || parts[0];
           textContent = validPart?.text || '';
           if (textContent) {
@@ -352,12 +332,12 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
           }
         } else if (response.status === 429 || response.status === 503) {
           // Bị rate limit hoặc server bận
-          onStatusUpdate?.(`Đang thử lại kết nối AI (${attempt + 1})...`);
-          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          onStatusUpdate?.(`${keyLabel}: Server bận (HTTP ${response.status}), thử lại (${attempt + 1})...`);
+          await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
         } else {
           const errorText = await response.text();
           lastError = `Model ${model} (${response.status}): ${errorText}`;
-          break; // Lỗi khác (ví dụ 400 hoặc 404), chuyển ngay sang model tiếp theo
+          break; // Lỗi khác (400, 403, 404), chuyển sang model tiếp theo
         }
       } catch (e: any) {
         if (e.name === 'AbortError') {
@@ -375,7 +355,97 @@ Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown co
   }
 
   if (!textContent) {
-    throw new Error(`Gemini API không thể xử lý ảnh: ${lastError}`);
+    throw new Error(lastError || 'Không thể lấy kết quả từ mô hình.');
+  }
+
+  return textContent;
+}
+
+export async function extractInvoiceWithGemini(
+  imageUri: string,
+  apiKey: string,
+  creationDate: string,
+  onStatusUpdate?: (status: string) => void,
+  backupApiKey?: string
+): Promise<Partial<InvoiceItem>> {
+  const primaryKey = (apiKey || '').trim();
+  const backupKey = (backupApiKey || '').trim();
+
+  if (!primaryKey && !backupKey) {
+    throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở Cài đặt (⚙️) để nhập API Key.');
+  }
+
+  // Đọc và nén ảnh tối ưu cho AI nhận diện
+  onStatusUpdate?.('Đang nén và chuẩn bị ảnh...');
+  const { base64: base64Data, mimeType } = await prepareImageBase64(imageUri);
+
+  if (!base64Data) {
+    throw new Error('Không thể đọc dữ liệu ảnh hóa đơn.');
+  }
+
+  const prompt = `Bạn là chuyên gia trích xuất dữ liệu hóa đơn điện tử giá trị gia tăng (VAT) Việt Nam.
+Hãy đọc ảnh hóa đơn này và trích xuất chính xác các thông tin:
+1. invoiceNumber: Số hóa đơn (chỉ lấy số, ví dụ: 208, 395, 340).
+2. originalInvoiceDate: Ngày lập hóa đơn trên ảnh (định dạng DD/MM/YYYY, ví dụ: 11/09/2026).
+3. sellerName: Tên đơn vị bán hàng (rút gọn chuẩn như: 'Cty TNHH Thuỷ sản Công nghệ cao Việt Nam - CN 1 tại Huế').
+4. productName: Tên mặt hàng hóa (ví dụ: 'Tôm Thẻ Chân Trắng Cỡ 30 Con/Kg').
+5. weight: Trọng lượng thực tế tính bằng kg. LƯU Ý QUAN TRỌNG: Hãy lấy số kg thực từ cột 'Số lượng' (ví dụ 5.753,1 thì đổi thành 5753.1). KHÔNG lấy từ cột 'Trọng lượng' nếu cột đó ghi số 0.
+6. unitPrice: Đơn giá mỗi kg dạng số nguyên (ví dụ: 177000, 192000).
+7. totalAmount: Thành tiền chưa thuế dạng số nguyên (ví dụ: 1018298700).
+
+Chỉ trả về duy nhất một chuỗi JSON hợp lệ không có markdown code fence:
+{
+  "invoiceNumber": 208,
+  "originalInvoiceDate": "11/09/2026",
+  "sellerName": "Cty TNHH Thuỷ sản Công nghệ cao Việt Nam - CN 1 tại Huế",
+  "productName": "Tôm Thẻ Chân Trắng Cỡ 30 Con/Kg",
+  "weight": 5753.1,
+  "unitPrice": 177000,
+  "totalAmount": 1018298700
+}`;
+
+  let textContent = '';
+  let primaryError = '';
+
+  // 1. Thử xử lý bằng API Key chính trước
+  if (primaryKey) {
+    try {
+      textContent = await callGeminiModels(
+        base64Data,
+        mimeType,
+        prompt,
+        primaryKey,
+        backupKey ? 'Key chính' : 'AI',
+        onStatusUpdate
+      );
+    } catch (err: any) {
+      primaryError = err?.message || String(err);
+      console.warn('Lỗi khi gọi API Key chính:', primaryError);
+    }
+  }
+
+  // 2. Tự động chuyển sang API Key dự phòng nếu Key chính thất bại (hoặc không có Key chính)
+  if (!textContent && backupKey) {
+    onStatusUpdate?.('⚠️ Key chính gặp sự cố / hết hạn ngạch. Tự động chuyển sang Key dự phòng...');
+    await new Promise((r) => setTimeout(r, 600));
+
+    try {
+      textContent = await callGeminiModels(
+        base64Data,
+        mimeType,
+        prompt,
+        backupKey,
+        'Key dự phòng',
+        onStatusUpdate
+      );
+    } catch (err: any) {
+      const backupError = err?.message || String(err);
+      throw new Error(`Cả 2 API Key đều thất bại. Key chính: ${primaryError || 'Lỗi'}. Key dự phòng: ${backupError}`);
+    }
+  }
+
+  if (!textContent) {
+    throw new Error(`Gemini API không thể xử lý ảnh: ${primaryError || 'Không có phản hồi từ máy chủ AI.'}`);
   }
 
   // Parse JSON an toàn: Tìm cặp ngoặc { và } để loại bỏ mọi ký tự thừa

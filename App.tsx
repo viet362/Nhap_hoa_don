@@ -20,8 +20,8 @@ import { ApiKeyModal } from './src/components/ApiKeyModal';
 import { ConfirmModal } from './src/components/ConfirmModal';
 import { AppShareModal } from './src/components/AppShareModal';
 import {
-  getStoredApiKey,
-  saveStoredApiKey,
+  getStoredApiKeys,
+  saveStoredApiKeys,
   extractInvoiceWithGemini,
 } from './src/services/geminiService';
 import { generateInvoiceExcel } from './src/services/excelService';
@@ -53,6 +53,7 @@ export default function App() {
 
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [apiKey, setApiKey] = useState<string>('');
+  const [backupApiKey, setBackupApiKey] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -65,8 +66,9 @@ export default function App() {
   // Tải API Key và Cấu hình đã lưu từ trước
   useEffect(() => {
     (async () => {
-      const stored = await getStoredApiKey();
-      if (stored) setApiKey(stored);
+      const { primaryKey, backupKey } = await getStoredApiKeys();
+      if (primaryKey) setApiKey(primaryKey);
+      if (backupKey) setBackupApiKey(backupKey);
 
       try {
         const storedSep = await AsyncStorage.getItem('@export_decimal_separator');
@@ -83,7 +85,7 @@ export default function App() {
   const handleImagesSelected = async (uris: string[]) => {
     if (uris.length === 0) return;
 
-    if (!apiKey) {
+    if (!apiKey && !backupApiKey) {
       Alert.alert(
         'Chưa có API Key',
         'Để phân tích hóa đơn tự động bằng AI, bạn cần nhập Gemini API Key trong cài đặt (⚙️) ở góc trên bên phải.',
@@ -106,7 +108,8 @@ export default function App() {
             uris[i],
             apiKey,
             settings.creationDate,
-            (status) => setProcessingStatus(`Ảnh ${i + 1}/${uris.length}: ${status}`)
+            (status) => setProcessingStatus(`Ảnh ${i + 1}/${uris.length}: ${status}`),
+            backupApiKey
           );
           newItems.push({
             id: `item-${Date.now()}-${i}`,
@@ -230,7 +233,7 @@ export default function App() {
         {/* Header thanh điều hướng */}
         <Header
           onOpenSettings={() => setIsSettingsOpen(true)}
-          hasApiKey={Boolean(apiKey)}
+          hasApiKey={Boolean(apiKey || backupApiKey)}
         />
 
         <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
@@ -270,14 +273,16 @@ export default function App() {
           fileNameDate={settings.fileNameDate}
         />
 
-        {/* Modal cấu hình API Key */}
+        {/* Modal cấu hình API Key với hỗ trợ bảo mật & 2 Key dự phòng */}
         <ApiKeyModal
           visible={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           apiKey={apiKey}
-          onSave={(key) => {
-            setApiKey(key);
-            saveStoredApiKey(key);
+          backupApiKey={backupApiKey}
+          onSave={(primaryKey, backupKey) => {
+            setApiKey(primaryKey);
+            setBackupApiKey(backupKey);
+            saveStoredApiKeys(primaryKey, backupKey);
           }}
         />
 
