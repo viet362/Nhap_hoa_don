@@ -9,8 +9,10 @@ function getDbPool() {
   const connectionUri = process.env.AIVEN_MYSQL_URI || process.env.DATABASE_URL;
 
   if (connectionUri) {
+    // Loại bỏ query parameter ssl-mode để tránh cảnh báo của thư viện mysql2
+    const cleanUri = connectionUri.replace(/[?&]ssl-mode=[^&]*/gi, '');
     pool = mysql.createPool({
-      uri: connectionUri,
+      uri: cleanUri,
       waitForConnections: true,
       connectionLimit: 5,
       ssl: {
