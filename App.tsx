@@ -19,6 +19,14 @@ import { ExportShareBar } from './src/components/ExportShareBar';
 import { ApiKeyModal } from './src/components/ApiKeyModal';
 import { ConfirmModal } from './src/components/ConfirmModal';
 import { AppShareModal } from './src/components/AppShareModal';
+import { ScreenPetCat } from './src/components/ScreenPetCat';
+import { CatQuoteModal } from './src/components/CatQuoteModal';
+import {
+  getLocalQuotes,
+  getCatEnabled,
+  setCatEnabled,
+  syncQuotesWithAiven,
+} from './src/services/catQuoteService';
 import {
   getStoredApiKeys,
   saveStoredApiKeys,
@@ -55,6 +63,9 @@ export default function App() {
   const [apiKey, setApiKey] = useState<string>('');
   const [backupApiKey, setBackupApiKey] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCatSettingsOpen, setIsCatSettingsOpen] = useState(false);
+  const [isCatEnabled, setIsCatEnabled] = useState(true);
+  const [catQuotes, setCatQuotes] = useState<string[]>([]);
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [exportedFileName, setExportedFileName] = useState('');
@@ -78,6 +89,15 @@ export default function App() {
       } catch (e) {
         console.warn('Lỗi đọc cấu hình dấu thập phân:', e);
       }
+
+      // Tải cài đặt mèo hoạt hình & tự động đồng bộ Aiven MySQL
+      getLocalQuotes().then(setCatQuotes);
+      getCatEnabled().then(setIsCatEnabled);
+      syncQuotesWithAiven().then((res) => {
+        if (res.quotes && res.quotes.length > 0) {
+          setCatQuotes(res.quotes);
+        }
+      }).catch(() => {});
     })();
   }, []);
 
@@ -233,7 +253,9 @@ export default function App() {
         {/* Header thanh điều hướng */}
         <Header
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenCatSettings={() => setIsCatSettingsOpen(true)}
           hasApiKey={Boolean(apiKey || backupApiKey)}
+          catEnabled={isCatEnabled}
         />
 
         <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
@@ -304,6 +326,26 @@ export default function App() {
           fileName={exportedFileName || `BẢNG KÊ HÀNG HÓA MUA VÀO NGÀY ${settings.fileNameDate}.xlsx`}
           itemCount={items.length}
           onRedownload={handleRedownload}
+        />
+
+        {/* Chú mèo Lottie hoạt hình đi lại ngẫu nhiên */}
+        <ScreenPetCat
+          quotes={catQuotes}
+          enabled={isCatEnabled}
+          onOpenSettings={() => setIsCatSettingsOpen(true)}
+        />
+
+        {/* Modal quản lý câu nói chú mèo & đồng bộ Aiven MySQL */}
+        <CatQuoteModal
+          visible={isCatSettingsOpen}
+          onClose={() => setIsCatSettingsOpen(false)}
+          isEnabled={isCatEnabled}
+          onToggleEnabled={(val) => {
+            setIsCatEnabled(val);
+            setCatEnabled(val);
+          }}
+          quotes={catQuotes}
+          onQuotesUpdated={setCatQuotes}
         />
       </SafeAreaView>
     </SafeAreaProvider>

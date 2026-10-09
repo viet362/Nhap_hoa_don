@@ -3,10 +3,17 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
 interface HeaderProps {
   onOpenSettings: () => void;
+  onOpenCatSettings?: () => void;
   hasApiKey: boolean;
+  catEnabled?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenSettings, hasApiKey }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onOpenSettings,
+  onOpenCatSettings,
+  hasApiKey,
+  catEnabled = true,
+}) => {
   return (
     <View style={styles.container}>
       <View style={styles.titleContainer}>
@@ -14,14 +21,26 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, hasApiKey }) => 
         <Text style={styles.subtitle}>Bóc Tách Hóa Đơn & Xuất Bảng Kê Chuẩn</Text>
       </View>
 
-      <TouchableOpacity
-        style={[styles.settingsButton, !hasApiKey && styles.settingsWarning]}
-        onPress={onOpenSettings}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.settingsIcon}>⚙️</Text>
-        {!hasApiKey && <View style={styles.badgeDot} />}
-      </TouchableOpacity>
+      <View style={styles.rightButtons}>
+        {onOpenCatSettings && (
+          <TouchableOpacity
+            style={[styles.settingsButton, catEnabled && styles.catActiveButton]}
+            onPress={onOpenCatSettings}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.settingsIcon}>🐱</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.settingsButton, !hasApiKey && styles.settingsWarning]}
+          onPress={onOpenSettings}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.settingsIcon}>⚙️</Text>
+          {!hasApiKey && <View style={styles.badgeDot} />}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -53,6 +72,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
+  rightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   settingsButton: {
     width: 42,
     height: 42,
@@ -62,6 +86,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#334155',
+  },
+  catActiveButton: {
+    borderColor: '#38BDF8',
+    backgroundColor: '#0C4A6E',
   },
   settingsWarning: {
     borderColor: '#F59E0B',

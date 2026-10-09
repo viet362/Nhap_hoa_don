@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@lottiefiles/dotlottie-react": "^0.13.5",
     "@react-native-async-storage/async-storage": "2.2.0",
     "buffer": "^6.0.3",
     "expo": "~57.0.26",
@@ -10,6 +11,8 @@
     "expo-image-picker": "~57.0.20",
     "expo-sharing": "~57.0.22",
     "expo-status-bar": "~57.0.1",
+    "lottie-react-native": "~7.3.8",
+    "mysql2": "^3.24.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
