@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Switch,
 } from 'react-native';
 import { InvoiceItem, ExportSettings } from '../types/invoice';
-import { formatDecimalComma, formatDecimalDot } from '../services/excelService';
+import { formatDecimalComma, formatDecimalDot, parseVietnameseNumber } from '../services/excelService';
 
 interface InvoiceTableProps {
   items: InvoiceItem[];
@@ -19,6 +19,38 @@ interface InvoiceTableProps {
   onDeleteItem: (id: string) => void;
   onClearAll: () => void;
 }
+
+// Hỗ trợ cả định dạng VN (1.363,25) và US (1,363.25); dấu chấm + đúng 3 chữ số được hiểu là phân cách nghìn
+const parseWeightInput = (text: string): number => parseVietnameseNumber(text);
+
+// Ô nhập trọng lượng giữ chuỗi nháp riêng, để gõ dở "12." hoặc "12," không bị ép về "12" sau mỗi phím
+const WeightInput: React.FC<{
+  value: number;
+  onChangeValue: (num: number) => void;
+  style: any;
+}> = ({ value, onChangeValue, style }) => {
+  const [draft, setDraft] = useState(String(value));
+
+  // Đồng bộ lại khi giá trị bị thay đổi từ bên ngoài (không khớp với chuỗi đang gõ)
+  useEffect(() => {
+    if (parseWeightInput(draft) !== value) {
+      setDraft(String(value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <TextInput
+      style={style}
+      keyboardType="decimal-pad"
+      value={draft}
+      onChangeText={(text) => {
+        setDraft(text);
+        onChangeValue(parseWeightInput(text));
+      }}
+    />
+  );
+};
 
 export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   items,
@@ -222,14 +254,10 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
               <View style={styles.editRow}>
                 <View style={styles.editCol}>
                   <Text style={styles.inputLabel}>Trọng lượng (kg):</Text>
-                  <TextInput
+                  <WeightInput
                     style={styles.numberInput}
-                    keyboardType="numeric"
-                    value={String(item.weight)}
-                    onChangeText={(val) => {
-                      const num = parseFloat(val.replace(',', '.')) || 0;
-                      onUpdateItem(item.id, { weight: num });
-                    }}
+                    value={Number(item.weight) || 0}
+                    onChangeValue={(num) => onUpdateItem(item.id, { weight: num })}
                   />
                 </View>
 

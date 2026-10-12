@@ -62,7 +62,7 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return output;
 }
 
-function parseVietnameseNumber(val: any): number {
+export function parseVietnameseNumber(val: any): number {
   if (typeof val === 'number') return val;
   if (!val) return 0;
   let str = String(val).trim().replace(/\s/g, '');
