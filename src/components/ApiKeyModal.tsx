@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
+import { testGeminiApiKey } from '../services/geminiService';
 
 interface ApiKeyModalProps {
   visible: boolean;
@@ -38,6 +40,14 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   const [pinTarget, setPinTarget] = useState<'primary' | 'backup' | null>(null);
   const [pinError, setPinError] = useState('');
 
+  // Trạng thái kiểm tra kết nối API Key
+  const [testingKey, setTestingKey] = useState<'primary' | 'backup' | null>(null);
+  const [testResult, setTestResult] = useState<{
+    target: 'primary' | 'backup';
+    success: boolean;
+    message: string;
+  } | null>(null);
+
   useEffect(() => {
     setPrimaryValue(apiKey);
     setBackupValue(backupApiKey);
@@ -46,7 +56,29 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setPinModalVisible(false);
     setPinInput('');
     setPinError('');
+    setTestResult(null);
   }, [apiKey, backupApiKey, visible]);
+
+  const handleTestKey = async (target: 'primary' | 'backup') => {
+    const val = target === 'primary' ? primaryValue : backupValue;
+    if (!val.trim()) {
+      Alert.alert(
+        'Chưa có Key',
+        `Vui lòng nhập ${target === 'primary' ? 'API Key chính' : 'API Key dự phòng'} trước khi kiểm tra.`
+      );
+      return;
+    }
+    setTestingKey(target);
+    setTestResult(null);
+    try {
+      const res = await testGeminiApiKey(val.trim());
+      setTestResult({ target, success: res.success, message: res.message });
+    } catch (e: any) {
+      setTestResult({ target, success: false, message: e?.message || 'Lỗi khi kiểm tra' });
+    } finally {
+      setTestingKey(null);
+    }
+  };
 
   const handleTogglePrimary = () => {
     if (showPrimary) {
@@ -163,6 +195,38 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   <Text style={styles.eyeIcon}>{showPrimary ? '👁️' : '🙈'}</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Nút kiểm tra kết nối Key chính */}
+              {hasPrimary && (
+                <View style={styles.testRow}>
+                  <TouchableOpacity
+                    style={styles.testBtn}
+                    onPress={() => handleTestKey('primary')}
+                    disabled={testingKey !== null}
+                    activeOpacity={0.8}
+                  >
+                    {testingKey === 'primary' ? (
+                      <ActivityIndicator size="small" color="#38BDF8" />
+                    ) : (
+                      <Text style={styles.testBtnText}>⚡ Kiểm tra kết nối Key chính</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {testResult && testResult.target === 'primary' && (
+                <View
+                  style={[
+                    styles.testResultBanner,
+                    testResult.success ? styles.testResultSuccess : styles.testResultError,
+                  ]}
+                >
+                  <Text style={styles.testResultText}>
+                    {testResult.success ? '✓ ' : '❌ '}
+                    {testResult.message}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* KEY 2: API Key dự phòng */}
@@ -210,6 +274,39 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   <Text style={styles.eyeIcon}>{showBackup ? '👁️' : '🙈'}</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Nút kiểm tra kết nối Key dự phòng */}
+              {hasBackup && (
+                <View style={styles.testRow}>
+                  <TouchableOpacity
+                    style={styles.testBtn}
+                    onPress={() => handleTestKey('backup')}
+                    disabled={testingKey !== null}
+                    activeOpacity={0.8}
+                  >
+                    {testingKey === 'backup' ? (
+                      <ActivityIndicator size="small" color="#38BDF8" />
+                    ) : (
+                      <Text style={styles.testBtnText}>⚡ Kiểm tra kết nối Key dự phòng</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {testResult && testResult.target === 'backup' && (
+                <View
+                  style={[
+                    styles.testResultBanner,
+                    testResult.success ? styles.testResultSuccess : styles.testResultError,
+                  ]}
+                >
+                  <Text style={styles.testResultText}>
+                    {testResult.success ? '✓ ' : '❌ '}
+                    {testResult.message}
+                  </Text>
+                </View>
+              )}
+
               <Text style={styles.fieldHint}>
                 💡 Lấy API Key miễn phí tại Google AI Studio (aistudio.google.com). Tự động dùng khi Key chính gặp sự cố (429 Rate Limit).
               </Text>
@@ -581,5 +678,45 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  testRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+  },
+  testBtn: {
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0284C7',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 32,
+  },
+  testBtnText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  testResultBanner: {
+    marginTop: 8,
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+  },
+  testResultSuccess: {
+    backgroundColor: '#064E3B',
+    borderColor: '#10B981',
+  },
+  testResultError: {
+    backgroundColor: '#451A03',
+    borderColor: '#F59E0B',
+  },
+  testResultText: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 16,
   },
 });

@@ -265,14 +265,81 @@ async function prepareImageBase64(
   return { base64: base64Data, mimeType: 'image/jpeg' };
 }
 
-// Danh sách các model Flash phổ biến và ổn định nhất của Gemini
+// Danh sách các model chính thức, tối ưu nhất của Google Gemini API
+// Ưu tiên Gemini 3.5 Flash Lite (tốc độ cao ~1.5s, nhận diện cực tốt), sau đó tới các model khác
 const CANDIDATE_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3.5-flash',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
-  'gemini-3.8-flash',
-  'gemini-3.1-flash-lite',
 ];
+
+/**
+ * Kiểm tra kết nối nhanh API Key với máy chủ Google Gemini
+ */
+export async function testGeminiApiKey(
+  apiKey: string
+): Promise<{ success: boolean; message: string; model?: string }> {
+  const cleanKey = (apiKey || '').trim();
+  if (!cleanKey) {
+    return { success: false, message: 'Chưa nhập API Key' };
+  }
+
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Ping' }] }],
+        }),
+      });
+
+      if (res.ok) {
+        return {
+          success: true,
+          message: `Kết nối thành công! Key đang hoạt động tốt trên model ${model}`,
+          model,
+        };
+      }
+
+      const txt = await res.text();
+      let errMsg = '';
+      try {
+        const j = JSON.parse(txt);
+        errMsg = j.error?.message || txt;
+      } catch {
+        errMsg = txt;
+      }
+
+      if (
+        res.status === 400 &&
+        (errMsg.includes('API key not valid') || errMsg.includes('API_KEY_INVALID'))
+      ) {
+        return {
+          success: false,
+          message: 'API Key không hợp lệ (API_KEY_INVALID). Vui lòng kiểm tra lại Key.',
+        };
+      }
+
+      if (res.status === 403) {
+        return { success: false, message: `Bị từ chối quyền truy cập (403): ${errMsg}` };
+      }
+
+      if (res.status === 429) {
+        return { success: false, message: 'Hết hạn ngạch hoặc quá số lượt gọi (429 Rate Limit).' };
+      }
+      // Nếu 404 hoặc 503, tiếp tục thử model tiếp theo trong CANDIDATE_MODELS
+    } catch {
+      // Tiếp tục thử model tiếp theo
+    }
+  }
+
+  return { success: false, message: 'Không thể kết nối đến máy chủ Gemini.' };
+}
 
 async function callGeminiModels(
   base64Data: string,
@@ -289,64 +356,100 @@ async function callGeminiModels(
     onStatusUpdate?.(`${keyLabel}: Đang gọi (${model})...`);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    // Thử lại tối đa 2 lần cho mỗi model để không làm người dùng chờ quá lâu
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  {
-                    inline_data: {
-                      mime_type: mimeType,
-                      data: base64Data,
-                    },
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: mimeType || 'image/jpeg',
+                    data: base64Data,
                   },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              response_mime_type: 'application/json',
+                },
+              ],
             },
-          }),
-        });
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        }),
+      });
 
-        clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-        if (response.ok) {
-          const jsonResponse = await response.json();
-          const parts = jsonResponse.candidates?.[0]?.content?.parts || [];
-          const validPart = parts.find((p: any) => p.text && !p.thought) || parts[0];
-          textContent = validPart?.text || '';
-          if (textContent) {
-            break; // Thành công
-          }
-        } else if (response.status === 429 || response.status === 503) {
-          // Bị rate limit hoặc server bận
-          onStatusUpdate?.(`${keyLabel}: Server bận (HTTP ${response.status}), thử lại (${attempt + 1})...`);
-          await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
-        } else {
-          const errorText = await response.text();
-          lastError = `Model ${model} (${response.status}): ${errorText}`;
-          break; // Lỗi khác (400, 403, 404), chuyển sang model tiếp theo
+      if (response.ok) {
+        const jsonResponse = await response.json();
+        const parts = jsonResponse.candidates?.[0]?.content?.parts || [];
+        const validPart = parts.find((p: any) => p.text && !p.thought) || parts[0];
+        textContent = validPart?.text || '';
+        if (textContent) {
+          break; // Thành công ngay với model này!
         }
-      } catch (e: any) {
-        if (e.name === 'AbortError') {
-          lastError = `Kết nối model ${model} quá hạn (timeout 20s).`;
-        } else {
-          lastError = e?.message || String(e);
+      } else {
+        const errorText = await response.text();
+        let errorMsg = '';
+        try {
+          const errJson = JSON.parse(errorText);
+          errorMsg = errJson.error?.message || errorText;
+        } catch {
+          errorMsg = errorText;
         }
-        await new Promise((r) => setTimeout(r, 500));
+
+        // 1. Nếu API Key sai hoàn toàn (API_KEY_INVALID), dừng ngay không thử các model khác
+        if (
+          response.status === 400 &&
+          (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID'))
+        ) {
+          throw new Error('API Key không hợp lệ. Vui lòng kiểm tra lại Key trong Cài đặt (⚙️).');
+        }
+
+        // 2. Nếu bị chặn quyền (403)
+        if (response.status === 403) {
+          throw new Error(`API Key bị từ chối quyền (403): ${errorMsg}`);
+        }
+
+        // 3. Nếu bị quá tải (503) hoặc chạm giới hạn (429): Lập tức chuyển sang model tiếp theo
+        if (response.status === 503 || response.status === 429) {
+          onStatusUpdate?.(
+            `${keyLabel}: Model ${model} ${response.status === 503 ? 'bận (503)' : 'hết ngạch (429)'}, đổi sang model khác...`
+          );
+          lastError = `Model ${model} (${response.status}): ${errorMsg}`;
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
+
+        // 4. Nếu model không được hỗ trợ trên API Key (404): Thử ngay model tiếp theo
+        if (response.status === 404) {
+          lastError = `Model ${model} (404): Không khả dụng cho tài khoản này`;
+          continue;
+        }
+
+        lastError = `Model ${model} (${response.status}): ${errorMsg}`;
       }
+    } catch (e: any) {
+      if (
+        e?.message?.includes('API Key không hợp lệ') ||
+        e?.message?.includes('bị từ chối quyền')
+      ) {
+        throw e;
+      }
+      if (e.name === 'AbortError') {
+        lastError = `Kết nối model ${model} quá hạn (timeout 25s).`;
+        onStatusUpdate?.(`${keyLabel}: Model ${model} timeout, thử model khác...`);
+      } else {
+        lastError = e?.message || String(e);
+      }
+      await new Promise((r) => setTimeout(r, 400));
     }
 
     if (textContent) {
