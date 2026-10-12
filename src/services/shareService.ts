@@ -145,3 +145,79 @@ export async function shareExcelFile(
     return false;
   }
 }
+
+export async function shareDocxFile(
+  fileUri: string,
+  fileName: string,
+  rawBytes?: Uint8Array
+): Promise<boolean> {
+  try {
+    // 1. Trình duyệt Web
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      const nav = navigator as any;
+
+      if (typeof nav.share === 'function' && rawBytes) {
+        const safeName = sanitizeFilename(fileName);
+        const candidateNames = [safeName, fileName];
+        const candidateMimeTypes = [
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/msword',
+          'application/octet-stream',
+          '',
+        ];
+
+        let fileToShare: File | null = null;
+        for (const name of candidateNames) {
+          for (const mime of candidateMimeTypes) {
+            try {
+              const testFile = new File([rawBytes as any], name, { type: mime });
+              if (typeof nav.canShare === 'function') {
+                if (nav.canShare({ files: [testFile] })) {
+                  fileToShare = testFile;
+                  break;
+                }
+              } else {
+                fileToShare = testFile;
+                break;
+              }
+            } catch {}
+          }
+          if (fileToShare) break;
+        }
+
+        if (fileToShare) {
+          try {
+            await nav.share({ files: [fileToShare] });
+            return true;
+          } catch (shareErr: any) {
+            if (shareErr?.name === 'AbortError') return false;
+            console.warn('Web Share API bị chặn, chuyển sang tải về:', shareErr);
+          }
+        }
+      }
+
+      downloadWebFile(fileUri, fileName);
+      return true;
+    }
+
+    // 2. Native Mobile
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      Alert.alert('Thông báo', 'File Word đã được lưu tại: ' + fileUri);
+      return false;
+    }
+
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      dialogTitle: `Chia sẻ ${fileName} qua Zalo, Tin nhắn...`,
+      UTI: 'org.openxmlformats.wordprocessingml.document',
+    });
+    return true;
+  } catch (error: any) {
+    if (error?.name === 'AbortError') return false;
+    console.error('Lỗi khi chia sẻ file docx:', error);
+    Alert.alert('Lỗi chia sẻ', error?.message || 'Không thể mở trình chia sẻ.');
+    return false;
+  }
+}
+

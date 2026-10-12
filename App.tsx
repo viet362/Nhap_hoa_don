@@ -21,6 +21,8 @@ import { ConfirmModal } from './src/components/ConfirmModal';
 import { AppShareModal } from './src/components/AppShareModal';
 import { ScreenPetCat } from './src/components/ScreenPetCat';
 import { CatQuoteModal } from './src/components/CatQuoteModal';
+import { FunctionTabs, ActiveTab } from './src/components/FunctionTabs';
+import { ReceiptGeneratorTab } from './src/components/ReceiptGeneratorTab';
 import {
   getLocalQuotes,
   getCatEnabled,
@@ -60,6 +62,7 @@ export default function App() {
   });
 
   const [items, setItems] = useState<InvoiceItem[]>([]);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('import_invoices');
   const [apiKey, setApiKey] = useState<string>('');
   const [backupApiKey, setBackupApiKey] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -258,42 +261,58 @@ export default function App() {
           catEnabled={isCatEnabled}
         />
 
+        {/* Thanh chuyển đổi chức năng: Function 1 (Mua vào) & Function 2 (Bán ra) */}
+        <FunctionTabs
+          activeTab={activeTab}
+          onChangeTab={setActiveTab}
+          invoiceCount={items.length}
+        />
+
         <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
-          {/* Khu vực chọn ảnh & chụp ảnh */}
-          <ImagePickerSection
-            onImagesSelected={handleImagesSelected}
-            isLoading={isProcessing}
-            itemCount={items.length}
-          />
+          {activeTab === 'import_invoices' ? (
+            <>
+              {/* Khu vực chọn ảnh & chụp ảnh */}
+              <ImagePickerSection
+                onImagesSelected={handleImagesSelected}
+                isLoading={isProcessing}
+                itemCount={items.length}
+              />
 
-          {/* Thanh trạng thái xử lý AI */}
-          {isProcessing && (
-            <View style={styles.processingBanner}>
-              <ActivityIndicator color="#38BDF8" size="small" />
-              <Text style={styles.processingText}>{processingStatus || 'Đang xử lý ảnh...'}</Text>
-            </View>
+              {/* Thanh trạng thái xử lý AI */}
+              {isProcessing && (
+                <View style={styles.processingBanner}>
+                  <ActivityIndicator color="#38BDF8" size="small" />
+                  <Text style={styles.processingText}>{processingStatus || 'Đang xử lý ảnh...'}</Text>
+                </View>
+              )}
+
+              {/* Bảng chi tiết hóa đơn */}
+              <InvoiceTable
+                items={items}
+                settings={settings}
+                onUpdateSettings={handleUpdateSettings}
+                onUpdateItem={handleUpdateItem}
+                onDeleteItem={handleDeleteItem}
+                onClearAll={handleClearAll}
+              />
+            </>
+          ) : (
+            /* Function 2: Chuyển đổi Excel sang Phiếu Thu Word (.docx) */
+            <ReceiptGeneratorTab />
           )}
-
-          {/* Bảng chi tiết hóa đơn */}
-          <InvoiceTable
-            items={items}
-            settings={settings}
-            onUpdateSettings={handleUpdateSettings}
-            onUpdateItem={handleUpdateItem}
-            onDeleteItem={handleDeleteItem}
-            onClearAll={handleClearAll}
-          />
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
 
-        {/* Nút hành động cố định phía dưới: XUẤT & CHIA SẺ QUA ZALO, TIN NHẮN */}
-        <ExportShareBar
-          onExportAndShare={handleExportAndShare}
-          isExporting={isExporting}
-          itemCount={items.length}
-          fileNameDate={settings.fileNameDate}
-        />
+        {/* Nút hành động cố định phía dưới: XUẤT & CHIA SẺ QUA ZALO, TIN NHẮN (Chỉ hiện ở Tab 1) */}
+        {activeTab === 'import_invoices' && (
+          <ExportShareBar
+            onExportAndShare={handleExportAndShare}
+            isExporting={isExporting}
+            itemCount={items.length}
+            fileNameDate={settings.fileNameDate}
+          />
+        )}
 
         {/* Modal cấu hình API Key với hỗ trợ bảo mật & 2 Key dự phòng */}
         <ApiKeyModal
